@@ -123,26 +123,40 @@ class name_generator {
     }
 
     /**
+     * Derives a deterministic human-readable name from a Moodle user ID.
+     *
+     * First name index  = $userid % count(given_names)
+     *   — cycles through all first names before repeating.
+     *
+     * Last name index   = ($userid % count(family_names)
+     *                      + intdiv($userid, count(given_names))) % count(family_names)
+     *   — cycles at a different rate from first names, and shifts when
+     *     first names wrap, minimising repeated full-name combinations.
+     *
+     * At 500 users with ~180 first names and ~110 last names, every first
+     * name appears at most 3 times and last names are spread across ~50
+     * distinct values rather than the 3–5 seen with the old username approach.
+     *
+     * @param  int   $userid  Moodle user ID (or predicted next ID).
+     * @return array ['firstname' => string, 'lastname' => string]
+     */
+    public function get_name_for_userid(int $userid): array {
+        $fn_count = count($this->given_names);
+        $ln_count = count($this->family_names);
+
+        $firstname_index = $userid % $fn_count;
+        $lastname_index  = ($userid % $ln_count + intdiv($userid, $fn_count)) % $ln_count;
+
+        return [
+            'firstname' => $this->given_names[$firstname_index],
+            'lastname'  => $this->family_names[$lastname_index],
+        ];
+    }
+
+    /**
      * Derives a deterministic human-readable name from a simulated username.
      *
-     * Username format: [letter][hundreds][tens][ones]
-     * Examples: a047, b187, c023, f012, t001
-     *
-     * First name — derived from middle two digits (hundreds + tens):
-     *   index = (hundreds_digit * 10 + tens_digit) % count(given_names)
-     *   e.g. b187 → hundreds=1, tens=8 → 18 % 110 = 18 → given_names[18]
-     *
-     * Surname — derived from prefix letter + ones digit:
-     *   letter_index: a=0, b=1, c=2, f=3, t=4
-     *   index = (letter_index * 10 + ones_digit) % count(family_names)
-     *   e.g. b187 → letter_index=1, ones=7 → 17 % 100 = 17 → family_names[17]
-     *
-     * With 110 given names and 100 family names the lists support pools well
-     * beyond the current default of 502 users. The same username always maps
-     * to the same name, making output deterministic and reproducible.
-     *
-     * Falls back to the username itself if parsing fails.
-     *
+     * @deprecated Use get_name_for_userid() instead.
      * @param  string $username  e.g. 'b187', 't001'
      * @return array  ['firstname' => string, 'lastname' => string]
      */

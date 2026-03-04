@@ -123,12 +123,23 @@ class user_manager {
      * @return array ['created' => int, 'existing' => int, 'profiles_created' => int]
      */
     public function ensure_users_exist(bool $verbose = false): array {
+        global $DB;
+
         $stats = ['created' => 0, 'existing' => 0, 'profiles_created' => 0];
 
         $cohortid = $this->ensure_cohort_exists();
 
+        // Seed name generation from the next available user id so names are
+        // distributed across the full first/last name pools, not a small subset.
+        $next_id      = (int)$DB->get_field_sql('SELECT COALESCE(MAX(id), 0) FROM {user}') + 1;
+        $created_before = 0;
+
         foreach ($this->user_definitions() as $def) {
-            $userid = $this->ensure_user($def, $stats, $verbose);
+            $userid = $this->ensure_user($def, $stats, $verbose, $next_id);
+            if ($stats['created'] > $created_before) {
+                $next_id++;
+                $created_before = $stats['created'];
+            }
 
             // Create learner profile for students (not instructors).
             if ($def['group'] !== null) {
@@ -244,7 +255,7 @@ class user_manager {
      * @param  bool  $verbose Emit mtrace on creation.
      * @return int   Moodle user ID.
      */
-    private function ensure_user(array $def, array &$stats, bool $verbose): int {
+    private function ensure_user(array $def, array &$stats, bool $verbose, int $next_id = 0): int {
         global $DB;
 
         $existing = $DB->get_record('user', ['username' => $def['username'], 'deleted' => 0]);
@@ -256,7 +267,7 @@ class user_manager {
         $userobj = new \stdClass();
         $userobj->username  = $def['username'];
         $userobj->password  = hash_internal_user_password(self::SIMULATOR_USER_PASSWORD);
-        $name = $this->namegen->get_name_for_username($def['username']);
+        $name = $this->namegen->get_name_for_userid($next_id);
         $userobj->firstname = $name['firstname'];
         $userobj->lastname  = $name['lastname'];
         $userobj->email     = $def['username'] . '@' . self::EMAIL_DOMAIN;
